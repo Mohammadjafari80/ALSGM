@@ -18,6 +18,8 @@ from scipy.io import loadmat
 from torch.utils.data import Dataset
 from PIL import Image
 from torch._utils import _accumulate
+import numpy as np
+
 
 class Binarize(object):
     """ This class introduces a binarization transformation
@@ -43,7 +45,7 @@ class CropCelebA64(object):
 
 def get_loaders(args):
     """Get data loaders for required dataset."""
-    return get_loaders_eval(args.dataset, args.data, args.distributed, args.batch_size)
+    return get_loaders_eval(args.dataset, args.data, args.distributed, args.batch_size, normal_class_indx=args.normal_class)
 
 
 def download_omniglot(data_dir):
@@ -90,15 +92,23 @@ class OMNIGLOT(Dataset):
 
 
 def get_loaders_eval(dataset, root, distributed, batch_size, augment=True, drop_last_train=True, shuffle_train=True,
-                     binarize_binary_datasets=True):
+                     binarize_binary_datasets=True, normal_class_indx=0):
     if dataset == 'cifar10':
         num_classes = 10
+        cifar_labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        print(cifar_labels[normal_class_indx])
         train_transform, valid_transform = _data_transforms_cifar10()
         train_transform = train_transform if augment else valid_transform
         train_data = dset.CIFAR10(
             root=root, train=True, download=True, transform=train_transform)
+            
+        train_data.data = train_data.data[np.array(train_data.targets) == normal_class_indx]
+
         valid_data = dset.CIFAR10(
             root=root, train=False, download=True, transform=valid_transform)
+
+        valid_data.targets  = [int(t!=normal_class_indx) for t in valid_data.targets]
+
     elif dataset == 'mnist':
         num_classes = 10
         train_transform, valid_transform = _data_transforms_mnist(binarize_binary_datasets)
@@ -198,7 +208,7 @@ def get_loaders_eval(dataset, root, distributed, batch_size, augment=True, drop_
         shuffle=(valid_sampler is None),
         sampler=valid_sampler, pin_memory=True, num_workers=1, drop_last=False)
 
-    return train_queue, valid_queue, num_classes
+    return train_queue, valid_queue, 2
 
 
 def random_split_dataset(dataset, lengths, seed=0):
