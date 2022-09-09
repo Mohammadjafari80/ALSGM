@@ -246,13 +246,18 @@ def train_vae(args, train_queue, model, optimizer, grad_scalar, global_step, war
     return nelbo.avg, global_step
 
 
+from sklearn.metrics import roc_auc_score
+
 def test_vae(valid_queue, model, num_samples, args, logging):
     if args.distributed:
         dist.barrier()
     nelbo_avg = utils.AvgrageMeter()
     neg_log_p_avg = utils.AvgrageMeter()
     model.eval()
+    scores = []
+    labels = []
     for step, x in enumerate(valid_queue):
+        labels += x[1].detach().cpu().numpy().tolist()
         x = utils.common_x_operations(x, args.num_x_bits)
         with torch.no_grad():
             nelbo, log_iw = [], []
@@ -271,6 +276,7 @@ def test_vae(valid_queue, model, num_samples, args, logging):
 
         nelbo_avg.update(nelbo.data, x.size(0))
         neg_log_p_avg.update(- log_p.data, x.size(0))
+        scores += nelbo.detach().cpu().numpy().tolist()
 
     utils.average_tensor(nelbo_avg.avg, args.distributed)
     utils.average_tensor(neg_log_p_avg.avg, args.distributed)
@@ -278,6 +284,7 @@ def test_vae(valid_queue, model, num_samples, args, logging):
         # block to sync
         dist.barrier()
     logging.info('val, step: %d, NELBO: %f, neg Log p %f', step, nelbo_avg.avg, neg_log_p_avg.avg)
+    print(f'AUC Score is : {roc_auc_score(labels, scores) * 100}')
     return neg_log_p_avg.avg, nelbo_avg.avg
 
 
